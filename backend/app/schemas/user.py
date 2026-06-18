@@ -1,0 +1,20 @@
+from datetime import datetime
+from pydantic import BaseModel, EmailStr
+
+
+class UserBase(BaseModel):
+    username: str
+    email: EmailStr | None = None
+    role: str = "operator"
+
+
+class UserCreate(UserBase):
+    password: str
+
+
+class UserResponse(UserBase):
+    id: int
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

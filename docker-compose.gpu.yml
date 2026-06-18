@@ -1,0 +1,11 @@
+# GPU override — requires NVIDIA Container Toolkit on host
+# Usage: docker compose up  (this file is auto-loaded)
+services:
+  api:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
