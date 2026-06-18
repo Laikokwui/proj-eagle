@@ -7,16 +7,12 @@ Real-time AI-powered PPE detection on live IP CCTV streams. Connects to any RTSP
 ## Screenshots
 
 <!-- Dashboard – live camera grid -->
-![Dashboard](docs/screenshots/dashboard.png)
-
-<!-- Cameras – RTSP stream management -->
-![Cameras](docs/screenshots/cameras.png)
-
-<!-- Violations – real-time log with screenshots -->
-![Violations](docs/screenshots/violations.png)
+<img width="1773" height="752" alt="Screenshot 2026-06-18 at 4 22 26 PM" src="https://github.com/user-attachments/assets/6c809c5b-05c2-4bca-93a6-4de77046a8d4" />
 
 <!-- Models – download and activate YOLO models -->
-![Models](docs/screenshots/models.png)
+<img width="1797" height="671" alt="Screenshot 2026-06-18 at 4 22 35 PM" src="https://github.com/user-attachments/assets/677f2d3c-c35f-4790-ba88-98095fbef737" />
+<img width="1760" height="708" alt="Screenshot 2026-06-18 at 4 24 14 PM" src="https://github.com/user-attachments/assets/80d633b4-3eac-445f-9270-e8e7f01d0f2f" />
+<img width="1767" height="869" alt="Screenshot 2026-06-18 at 4 24 26 PM" src="https://github.com/user-attachments/assets/8dad3eba-979c-44dc-b9d4-f62caba6a76b" />
 
 ---
 
