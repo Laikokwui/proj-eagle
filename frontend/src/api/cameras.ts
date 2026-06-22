@@ -18,6 +18,12 @@ export interface CameraTestResult {
   frame_base64: string | null;
 }
 
+export interface DetectionStatus {
+  detected: string[];
+  violations: string[];
+  active: boolean;
+}
+
 export const camerasApi = {
   list: () => api.get<Camera[]>("/cameras").then((r) => r.data),
   create: (data: Partial<Camera>) => api.post<Camera>("/cameras", data).then((r) => r.data),
@@ -28,4 +34,6 @@ export const camerasApi = {
   test: (id: number) => api.post<CameraTestResult>(`/cameras/${id}/test`).then((r) => r.data),
   testUrl: (rtsp_url: string) =>
     api.post<CameraTestResult>("/cameras/test-url", { rtsp_url }).then((r) => r.data),
+  detectionStatus: (id: number) =>
+    api.get<DetectionStatus>(`/cameras/${id}/detection-status`).then((r) => r.data),
 };

@@ -13,20 +13,17 @@ export default function CameraCell({ camera }: Props) {
   const [hasFrame, setHasFrame] = useState(false);
 
   const handleFirstFrame = useCallback(() => setHasFrame(true), []);
-
   useStreamSocket(camera.id, canvasRef, camera.is_streaming, setFps, handleFirstFrame);
 
   const isConnecting = camera.is_streaming && !hasFrame;
 
   return (
     <div className="relative bg-black rounded-lg overflow-hidden aspect-video border border-border group">
-      {/* Canvas — always mounted when streaming so socket can draw into it */}
       <canvas
         ref={canvasRef}
         className={`w-full h-full object-contain ${camera.is_streaming ? "block" : "hidden"}`}
       />
 
-      {/* Offline state */}
       {!camera.is_streaming && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted-foreground">
           <WifiOff className="h-8 w-8" />
@@ -34,7 +31,6 @@ export default function CameraCell({ camera }: Props) {
         </div>
       )}
 
-      {/* Connecting overlay — streaming but first frame not yet received */}
       {isConnecting && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted-foreground bg-black/60">
           <Loader2 className="h-8 w-8 animate-spin" />
@@ -42,7 +38,6 @@ export default function CameraCell({ camera }: Props) {
         </div>
       )}
 
-      {/* Bottom bar — always visible */}
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-2 pb-2 pt-4">
         <div className="flex items-center gap-2">
           <div

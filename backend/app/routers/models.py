@@ -1,16 +1,20 @@
 import asyncio
+import os
+import re
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.config import settings
 from app.database import get_db
 from app.models.ai_model import AIModel
 from app.models.user import User
 from app.core.dependencies import get_current_user
 from app.schemas.ai_model import (
-    AIModelResponse, AIModelDownloadRequest, HFModelSearchResult, UltralyticsModelInfo
+    AIModelResponse, AIModelDownloadRequest, HFModelSearchResult,
+    UltralyticsModelInfo, AIModelRulesUpdate,
 )
 from app.services.model_service import model_service
 from app.services.detection_service import detection_service
@@ -82,7 +86,11 @@ async def activate_model(
     await db.flush()
     await db.refresh(model)
 
-    await detection_service.reload_model(model.file_path)
+    await detection_service.reload_model(
+        model.file_path,
+        model.ppe_class_ids or [],
+        model.ppe_class_names or [],
+    )
     return model
 
 
@@ -98,3 +106,80 @@ async def delete_model(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete active model")
     await model_service.delete_model_file(model.file_path)
     await db.delete(model)
+
+
+@router.patch("/{model_id}/rules", response_model=AIModelResponse)
+async def update_rules(
+    model_id: int,
+    body: AIModelRulesUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    result = await db.execute(select(AIModel).where(AIModel.id == model_id))
+    model = result.scalar_one_or_none()
+    if not model:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Model not found")
+    model.ppe_class_ids = body.ppe_class_ids
+    model.ppe_class_names = body.ppe_class_names
+    await db.flush()
+    await db.refresh(model)
+    if model.is_active:
+        detection_service.set_active_model(
+            model.file_path,
+            model.ppe_class_ids,
+            model.ppe_class_names,
+        )
+    return model
+
+
+@router.post("/upload", response_model=AIModelResponse, status_code=status.HTTP_201_CREATED)
+async def upload_model(
+    file: UploadFile = File(...),
+    name: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    if not (file.filename or "").lower().endswith(".pt"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only .pt files are supported")
+
+    os.makedirs(settings.models_dir, exist_ok=True)
+    safe_filename = re.sub(r"[^a-zA-Z0-9._-]", "_", file.filename or "model.pt")
+    # Avoid filename collisions
+    dest_path = os.path.join(settings.models_dir, safe_filename)
+    if os.path.exists(dest_path):
+        base, ext = os.path.splitext(safe_filename)
+        dest_path = os.path.join(settings.models_dir, f"{base}_{uuid.uuid4().hex[:6]}{ext}")
+
+    contents = await file.read()
+    with open(dest_path, "wb") as f:
+        f.write(contents)
+
+    loop = asyncio.get_running_loop()
+
+    def _load_names():
+        from ultralytics import YOLO
+        m = YOLO(dest_path)
+        return list(m.names.values()) if m.names else []
+
+    try:
+        class_names = await loop.run_in_executor(None, _load_names)
+    except Exception as e:
+        os.remove(dest_path)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail=f"Failed to load model: {e}")
+
+    file_size_mb = os.path.getsize(dest_path) / 1024 / 1024
+    model = AIModel(
+        name=name,
+        source="upload",
+        model_id=os.path.basename(dest_path),
+        file_path=dest_path,
+        class_names=class_names,
+        ppe_class_ids=[],
+        is_active=False,
+        file_size_mb=round(file_size_mb, 2),
+    )
+    db.add(model)
+    await db.commit()
+    await db.refresh(model)
+    return model

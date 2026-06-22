@@ -13,6 +13,7 @@ class AIModelResponse(AIModelBase):
     file_path: str
     class_names: list[str]
     ppe_class_ids: list[int]
+    ppe_class_names: list[str]
     is_active: bool
     file_size_mb: float | None
     downloaded_at: datetime
@@ -45,3 +46,8 @@ class UltralyticsModelInfo(BaseModel):
     name: str
     size_mb: float
     description: str
+
+
+class AIModelRulesUpdate(BaseModel):
+    ppe_class_ids: list[int] = []
+    ppe_class_names: list[str] = []

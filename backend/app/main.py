@@ -29,8 +29,13 @@ async def lifespan(app: FastAPI):
         result = await db.execute(select(AIModelModel).where(AIModelModel.is_active == True))
         active_model = result.scalar_one_or_none()
         if active_model:
-            detection_service.set_model_path(active_model.file_path)
-            log.info("active_model_restored", name=active_model.name, path=active_model.file_path)
+            detection_service.set_active_model(
+                active_model.file_path,
+                active_model.ppe_class_ids or [],
+                active_model.ppe_class_names or [],
+            )
+            rule_count = len(active_model.ppe_class_names or active_model.ppe_class_ids or [])
+            log.info("active_model_restored", name=active_model.name, violation_classes=rule_count)
     log.info("startup", data_dir=settings.data_dir)
     yield
     from app.services.camera_service import camera_manager

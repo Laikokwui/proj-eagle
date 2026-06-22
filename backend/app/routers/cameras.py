@@ -1,4 +1,5 @@
 import base64
+import json
 import cv2
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +11,7 @@ from app.models.user import User
 from app.core.dependencies import get_current_user
 from app.schemas.camera import CameraCreate, CameraUpdate, CameraResponse, CameraTestResponse
 from app.services.camera_service import camera_manager
+from app.redis_client import get_redis
 
 router = APIRouter(prefix="/api/cameras", tags=["cameras"])
 
@@ -80,6 +82,16 @@ async def stop_stream(
     await db.flush()
     await db.refresh(camera)
     return camera
+
+
+@router.get("/{camera_id}/detection-status")
+async def get_detection_status(camera_id: int, _: User = Depends(get_current_user)):
+    redis = await get_redis()
+    raw = await redis.get(f"camera:{camera_id}:last_detection")
+    if not raw:
+        return {"detected": [], "violations": [], "active": False}
+    data = json.loads(raw)
+    return {**data, "active": True}
 
 
 @router.post("/test-url", response_model=CameraTestResponse)

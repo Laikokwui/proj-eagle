@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
-import { camerasApi, type Camera } from "@/api/cameras";
+import { camerasApi } from "@/api/cameras";
 import { useCamerasStore } from "@/store/cameras";
 import { useAlertSocket } from "@/hooks/useAlertSocket";
-import AlertBanner from "@/components/dashboard/AlertBanner";
 import CameraGrid from "@/components/dashboard/CameraGrid";
 
 export default function DashboardPage() {
@@ -25,10 +24,5 @@ export default function DashboardPage() {
     );
   }
 
-  return (
-    <div>
-      <AlertBanner />
-      <CameraGrid cameras={cameras} />
-    </div>
-  );
+  return <CameraGrid cameras={cameras} />;
 }

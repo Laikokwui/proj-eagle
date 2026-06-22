@@ -13,6 +13,7 @@ class AIModel(Base):
     file_path = Column(String(512), nullable=False)
     class_names = Column(JSON, nullable=False, default=list)
     ppe_class_ids = Column(JSON, nullable=False, default=list)
+    ppe_class_names = Column(JSON, nullable=False, default=list)
     is_active = Column(Boolean, default=False, index=True)
     file_size_mb = Column(Numeric(8, 2))
     downloaded_at = Column(DateTime(timezone=True), server_default=func.now())

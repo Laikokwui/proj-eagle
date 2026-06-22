@@ -8,6 +8,7 @@ export interface AIModel {
   file_path: string;
   class_names: string[];
   ppe_class_ids: number[];
+  ppe_class_names: string[];
   is_active: boolean;
   file_size_mb: number | null;
   downloaded_at: string;
@@ -43,4 +44,14 @@ export const modelsApi = {
     api.post<{ task_id: string }>("/models/download", { source, model_id: modelId, name }).then((r) => r.data),
   activate: (id: number) => api.post<AIModel>(`/models/${id}/activate`).then((r) => r.data),
   delete: (id: number) => api.delete(`/models/${id}`),
+  updateRules: (id: number, ppe_class_names: string[]) =>
+    api.patch<AIModel>(`/models/${id}/rules`, { ppe_class_names, ppe_class_ids: [] }).then((r) => r.data),
+  upload: (file: File, name: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("name", name);
+    return api.post<AIModel>("/models/upload", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }).then((r) => r.data);
+  },
 };

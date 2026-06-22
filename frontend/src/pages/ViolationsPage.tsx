@@ -3,7 +3,7 @@ import { violationsApi, type Violation } from "@/api/violations";
 import { camerasApi, type Camera } from "@/api/cameras";
 import { useAlertsStore } from "@/store/alerts";
 import { useViolationsStore } from "@/store/violations";
-import { CheckCheck, Download, Eye, AlertTriangle, Loader2 } from "lucide-react";
+import { CheckCheck, Download, Eye, AlertTriangle, Loader2, Brain, Settings2, Video, ShieldCheck } from "lucide-react";
 import { format } from "date-fns";
 import ViolationDetailModal from "@/components/violations/ViolationDetailModal";
 
@@ -152,8 +152,58 @@ export default function ViolationsPage() {
       </div>
 
       {violations.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground text-sm border border-dashed border-border rounded-lg">
-          No violations found.
+        <div className="border border-dashed border-border rounded-lg px-6 py-12">
+          <div className="max-w-md mx-auto space-y-6">
+            <div className="text-center">
+              <ShieldCheck className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+              <h3 className="font-medium text-sm">No violations recorded yet</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Follow these steps to start detecting PPE violations.
+              </p>
+            </div>
+            <div className="space-y-3">
+              {[
+                {
+                  icon: Brain,
+                  step: "1",
+                  title: "Activate a model",
+                  desc: 'Go to Models → Downloaded and click "Set Active" on a YOLO model.',
+                },
+                {
+                  icon: Settings2,
+                  step: "2",
+                  title: "Configure violation rules",
+                  desc: 'Click "Configure Rules" on the active model and check which detected classes should trigger violations (e.g. "no-helmet", "no-vest", or "person" for testing).',
+                },
+                {
+                  icon: Video,
+                  step: "3",
+                  title: "Start a camera stream",
+                  desc: 'Go to Cameras, add a camera with an RTSP/HTTP stream URL, and click Start.',
+                },
+                {
+                  icon: AlertTriangle,
+                  step: "4",
+                  title: "Violations appear here",
+                  desc: "When the model detects a configured violation class in the stream, it will be logged here in real time.",
+                },
+              ].map(({ icon: Icon, step, title, desc }) => (
+                <div key={step} className="flex items-start gap-3">
+                  <div className="flex-shrink-0 h-7 w-7 rounded-full bg-secondary border border-border flex items-center justify-center">
+                    <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">{title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground text-center border-t border-border pt-4">
+              Tip: Standard Ultralytics models detect general objects like "person" and "car".
+              For real PPE detection, search HuggingFace for a model trained on PPE classes (helmet, vest, gloves).
+            </p>
+          </div>
         </div>
       ) : (
         <>
