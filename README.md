@@ -1,4 +1,4 @@
-# PPE Compliance Monitoring System
+# AI-Powered Video Management System 
 
 Real-time AI-powered PPE detection on live IP CCTV streams. Connects to any RTSP/HTTP camera, runs YOLO object detection, and displays live annotated feeds on an operations dashboard.
 
