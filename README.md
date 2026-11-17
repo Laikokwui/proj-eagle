@@ -1,6 +1,6 @@
 # AI-Powered Video Management System 
 
-Real-time AI-powered PPE detection on live IP CCTV streams. Connects to any RTSP/HTTP camera, runs YOLO object detection, and displays live annotated feeds on an operations dashboard.
+Transform standard surveillance cameras into proactive safety monitors. Our AI-Powered Video Management System connects directly to your existing RTSP/HTTP CCTV infrastructure to detect Personal Protective Equipment (PPE) compliance in real time. Powered by high-accuracy YOLO object detection, the platform analyzes live video streams and delivers instant visual overlays and safety alerts through a centralized operations dashboard—helping safety teams spot hazards immediately and maintain a compliant worksite without replacing existing hardware.
 
 ---
 
