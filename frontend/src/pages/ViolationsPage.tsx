@@ -99,51 +99,60 @@ export default function ViolationsPage() {
     decrement();
   };
 
+  const unackCount = violations.filter((v) => !v.acknowledged).length;
+
   if (loading) return (
-    <div className="flex items-center justify-center py-16 gap-2 text-muted-foreground">
-      <Loader2 className="h-4 w-4 animate-spin" />
-      <span className="text-sm">Loading…</span>
+    <div className="panel px-4 py-14">
+      <div className="flex items-center justify-center gap-2 text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        <span className="ops-label">Reading event log…</span>
+      </div>
     </div>
   );
 
-  const unackCount = violations.filter((v) => !v.acknowledged).length;
-
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Violations</h2>
-          {unackCount > 0 && (
-            <p className="text-xs text-destructive mt-0.5">
-              {unackCount} unacknowledged
-            </p>
-          )}
+    <div className="space-y-3">
+      <div className="panel">
+        <div className="panel-head">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className="ops-label text-primary">04 / EVENTS</span>
+            <h2 className="ops-title">Violation log</h2>
+            <span className="ops-label">{violations.length} shown</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {unackCount > 0 && (
+              <span className="ops-chip ops-chip-alert">
+                <AlertTriangle className="h-3 w-3" />
+                {unackCount} unacknowledged
+              </span>
+            )}
+            <button
+              onClick={() => violationsApi.exportCsv(selectedCamera !== "" ? { camera_id: selectedCamera as number } : {})}
+              className="ops-button"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Export CSV
+            </button>
+          </div>
         </div>
-        <button
-          onClick={() => violationsApi.exportCsv(selectedCamera !== "" ? { camera_id: selectedCamera as number } : {})}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm border border-border rounded-md hover:bg-secondary"
-        >
-          <Download className="h-4 w-4" />
-          Export CSV
-        </button>
       </div>
 
-      <div className="flex gap-3 flex-wrap">
+      <div className="panel flex flex-wrap items-center gap-3 px-3 py-2">
+        <span className="ops-label">Filters</span>
         <select
           value={selectedCamera}
           onChange={(e) => setSelectedCamera(e.target.value === "" ? "" : Number(e.target.value))}
-          className="px-3 py-1.5 bg-secondary border border-border rounded-md text-sm"
+          className="ops-select"
         >
           <option value="">All cameras</option>
           {cameras.map((c) => (
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
         </select>
-
         <select
           value={String(acknowledged)}
           onChange={(e) => setAcknowledged(e.target.value === "" ? "" : e.target.value === "true")}
-          className="px-3 py-1.5 bg-secondary border border-border rounded-md text-sm"
+          className="ops-select"
         >
           <option value="">All statuses</option>
           <option value="false">Unacknowledged</option>
@@ -152,46 +161,48 @@ export default function ViolationsPage() {
       </div>
 
       {violations.length === 0 ? (
-        <div className="border border-dashed border-border rounded-lg px-6 py-12">
-          <div className="max-w-md mx-auto space-y-6">
+        <div className="panel relative px-6 py-12">
+          <div className="hazard-rail absolute left-0 top-0 bottom-0 w-1" aria-hidden="true" />
+          <div className="max-w-2xl mx-auto space-y-6">
             <div className="text-center">
-              <ShieldCheck className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-              <h3 className="font-medium text-sm">No violations recorded yet</h3>
+              <ShieldCheck className="h-9 w-9 text-muted-foreground mx-auto" />
+              <p className="ops-title mt-3">No violations recorded</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Follow these steps to start detecting PPE violations.
+                Follow this sequence to start logging PPE events.
               </p>
             </div>
             <div className="space-y-3">
               {[
                 {
                   icon: Brain,
-                  step: "1",
+                  step: "01",
                   title: "Activate a model",
-                  desc: 'Go to Models → Downloaded and click "Set Active" on a YOLO model.',
+                  desc: 'Models → Downloaded, then “Set Active” on a YOLO model.',
                 },
                 {
                   icon: Settings2,
-                  step: "2",
+                  step: "02",
                   title: "Configure violation rules",
-                  desc: 'Click "Configure Rules" on the active model and check which detected classes should trigger violations (e.g. "no-helmet", "no-vest", or "person" for testing).',
+                  desc: 'Check the classes that trigger events — “no-helmet”, “no-vest”, or “person” for testing.',
                 },
                 {
                   icon: Video,
-                  step: "3",
+                  step: "03",
                   title: "Start a camera stream",
-                  desc: 'Go to Cameras, add a camera with an RTSP/HTTP stream URL, and click Start.',
+                  desc: "Add an RTSP or HTTP stream under Cameras, then start it.",
                 },
                 {
                   icon: AlertTriangle,
-                  step: "4",
-                  title: "Violations appear here",
-                  desc: "When the model detects a configured violation class in the stream, it will be logged here in real time.",
+                  step: "04",
+                  title: "Events appear here",
+                  desc: "Detected rule matches are logged in real time.",
                 },
               ].map(({ icon: Icon, step, title, desc }) => (
-                <div key={step} className="flex items-start gap-3">
-                  <div className="flex-shrink-0 h-7 w-7 rounded-full bg-secondary border border-border flex items-center justify-center">
-                    <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-                  </div>
+                <div key={step} className="flex items-start gap-3 border-l-2 border-border pl-3">
+                  <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center border border-border bg-panel-raised font-mono text-[10px] text-primary">
+                    {step}
+                  </span>
+                  <Icon className="h-3.5 w-3.5 text-muted-foreground mt-2 flex-shrink-0" />
                   <div>
                     <p className="text-sm font-medium">{title}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
@@ -200,60 +211,58 @@ export default function ViolationsPage() {
               ))}
             </div>
             <p className="text-xs text-muted-foreground text-center border-t border-border pt-4">
-              Tip: Standard Ultralytics models detect general objects like "person" and "car".
-              For real PPE detection, search HuggingFace for a model trained on PPE classes (helmet, vest, gloves).
+              Standard Ultralytics models detect general objects. For PPE classes such as helmet, vest,
+              and gloves, use a PPE-trained model from Hugging Face.
             </p>
           </div>
         </div>
       ) : (
         <>
-          <div className="overflow-hidden rounded-lg border border-border">
-            <table className="w-full text-sm">
-              <thead className="bg-secondary">
+          <div className="panel overflow-x-auto">
+            <table className="ops-table">
+              <thead>
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium">Time</th>
-                  <th className="text-left px-4 py-3 font-medium">Camera</th>
-                  <th className="text-left px-4 py-3 font-medium">Missing PPE</th>
-                  <th className="text-left px-4 py-3 font-medium hidden md:table-cell">Confidence</th>
-                  <th className="text-left px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3" />
+                  <th>Time</th>
+                  <th>Camera</th>
+                  <th>Missing PPE</th>
+                  <th className="hidden md:table-cell">Confidence</th>
+                  <th>Status</th>
+                  <th><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody>
                 {violations.map((v) => (
-                  <tr key={v.id} className={`hover:bg-secondary/50 ${!v.acknowledged ? "bg-destructive/5" : ""}`}>
-                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                  <tr key={v.id} className={!v.acknowledged ? "bg-destructive/5" : ""}>
+                    <td className="font-mono text-xs text-muted-foreground whitespace-nowrap">
                       {format(new Date(v.occurred_at), "MMM d, HH:mm:ss")}
                     </td>
-                    <td className="px-4 py-3">{v.camera_name ?? `#${v.camera_id}`}</td>
-                    <td className="px-4 py-3">
+                    <td className="text-sm">{v.camera_name ?? `#${v.camera_id}`}</td>
+                    <td>
                       <div className="flex flex-wrap gap-1">
                         {v.missing_classes.map((cls) => (
-                          <span key={cls} className="px-2 py-0.5 text-xs bg-destructive/20 text-destructive rounded-full">
-                            {cls}
-                          </span>
+                          <span key={cls} className="ops-chip ops-chip-alert">{cls}</span>
                         ))}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
+                    <td className="hidden md:table-cell font-mono text-xs text-muted-foreground">
                       {v.detection_conf != null ? `${(v.detection_conf * 100).toFixed(1)}%` : "—"}
                     </td>
-                    <td className="px-4 py-3">
+                    <td>
                       {v.acknowledged ? (
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <CheckCheck className="h-3.5 w-3.5 text-green-400" /> Ack'd
+                        <span className="ops-chip ops-chip-clear">
+                          <CheckCheck className="h-3 w-3" /> Ack’d
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1 text-xs text-destructive">
-                          <AlertTriangle className="h-3.5 w-3.5" /> Open
+                        <span className="ops-chip ops-chip-alert">
+                          <AlertTriangle className="h-3 w-3" /> Open
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1 justify-end">
+                    <td>
+                      <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => setDetail(v)}
-                          className="p-2 rounded hover:bg-secondary text-muted-foreground hover:text-foreground"
+                          className="icon-button"
                           title="View detail"
                         >
                           <Eye className="h-4 w-4" />
@@ -261,7 +270,7 @@ export default function ViolationsPage() {
                         {!v.acknowledged && (
                           <button
                             onClick={() => handleAcknowledge(v.id)}
-                            className="p-2 rounded hover:bg-secondary text-muted-foreground hover:text-green-400"
+                            className="icon-button hover:text-clear"
                             title="Acknowledge"
                           >
                             <CheckCheck className="h-4 w-4" />
@@ -276,11 +285,11 @@ export default function ViolationsPage() {
           </div>
 
           {hasMore && (
-            <div className="flex justify-center pt-2">
+            <div className="flex justify-center">
               <button
                 onClick={handleLoadMore}
                 disabled={loadingMore}
-                className="flex items-center gap-2 px-4 py-2 border border-border rounded-md text-sm hover:bg-secondary disabled:opacity-50"
+                className="ops-button"
               >
                 {loadingMore && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 Load more

@@ -10,6 +10,7 @@ class DetectionService:
 
     def __init__(self):
         self._active_model_path: str | None = None
+        self._active_model_id: int | None = None
         self._violation_class_ids: list[int] = []
         self._violation_class_names: list[str] = []
         self._lock = threading.Lock()
@@ -17,6 +18,10 @@ class DetectionService:
     def get_model_path(self) -> str | None:
         with self._lock:
             return self._active_model_path
+
+    def get_active_model_id(self) -> int | None:
+        with self._lock:
+            return self._active_model_id
 
     def get_violation_class_ids(self) -> list[int]:
         with self._lock:
@@ -31,9 +36,11 @@ class DetectionService:
         path: str,
         violation_class_ids: list[int] | None = None,
         violation_class_names: list[str] | None = None,
+        model_id: int | None = None,
     ) -> None:
         with self._lock:
             self._active_model_path = path
+            self._active_model_id = model_id
             self._violation_class_ids = list(violation_class_ids or [])
             self._violation_class_names = list(violation_class_names or [])
 
@@ -45,8 +52,9 @@ class DetectionService:
         model_path: str,
         violation_class_ids: list[int] | None = None,
         violation_class_names: list[str] | None = None,
+        model_id: int | None = None,
     ) -> None:
-        self.set_active_model(model_path, violation_class_ids, violation_class_names)
+        self.set_active_model(model_path, violation_class_ids, violation_class_names, model_id)
         redis = await get_redis()
         await redis.publish("model:reload", model_path)
         log.info("model_reload_signal_sent", path=model_path,

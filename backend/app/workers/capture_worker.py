@@ -5,6 +5,8 @@ import time
 import cv2
 import structlog
 
+from app.services.stream_url import normalize_stream_url
+
 log = structlog.get_logger()
 
 
@@ -14,7 +16,7 @@ class CaptureWorker(threading.Thread):
     def __init__(self, camera_id: int, rtsp_url: str, fps_limit: int, frame_queue: queue.Queue):
         super().__init__(daemon=True, name=f"capture-{camera_id}")
         self.camera_id = camera_id
-        self.rtsp_url = rtsp_url
+        self.rtsp_url = normalize_stream_url(rtsp_url)
         self.fps_limit = max(1, fps_limit)
         self.frame_queue = frame_queue
         self._stop_event = threading.Event()

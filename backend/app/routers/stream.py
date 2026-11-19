@@ -1,5 +1,5 @@
 import asyncio
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, Response, WebSocket, WebSocketDisconnect, Query
 from jose import JWTError
 
 from app.core.security import decode_token
@@ -21,10 +21,14 @@ async def _verify_ws_token(token: str) -> str | None:
 @router.websocket("/ws/stream/{camera_id}")
 async def stream_camera(websocket: WebSocket, camera_id: int, token: str = Query(...)):
     username = await _verify_ws_token(token)
-    await websocket.accept()
     if not username:
-        await websocket.close(code=4001)
+        # Deny the handshake itself — never establish an authenticated-looking
+        # socket for an unauthenticated client.
+        await websocket.send_denial_response(
+            Response(status_code=403, content="Forbidden")
+        )
         return
+    await websocket.accept()
 
     redis = await get_redis()
     pubsub = redis.pubsub()
@@ -61,10 +65,12 @@ async def stream_camera(websocket: WebSocket, camera_id: int, token: str = Query
 @router.websocket("/ws/alerts")
 async def stream_alerts(websocket: WebSocket, token: str = Query(...)):
     username = await _verify_ws_token(token)
-    await websocket.accept()
     if not username:
-        await websocket.close(code=4001)
+        await websocket.send_denial_response(
+            Response(status_code=403, content="Forbidden")
+        )
         return
+    await websocket.accept()
 
     redis = await get_redis()
     pubsub = redis.pubsub()

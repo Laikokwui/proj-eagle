@@ -35,6 +35,18 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        panel: "hsl(var(--panel))",
+        "panel-raised": "hsl(var(--panel-raised))",
+        line: "hsl(var(--line))",
+        clear: "#35B77A",
+        info: "#4DA6A0",
+        hazard: "#F2B705",
+        "hazard-orange": "#E6611E",
+        fault: "#D64232",
+      },
+      fontFamily: {
+        sans: ['"IBM Plex Sans"', "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ['"IBM Plex Mono"', "ui-monospace", "SFMono-Regular", "monospace"],
       },
       borderRadius: {
         lg: "var(--radius)",

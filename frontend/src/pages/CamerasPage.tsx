@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { camerasApi, type Camera } from "@/api/cameras";
 import { useCamerasStore } from "@/store/cameras";
-import { Plus, Play, Square, Pencil, Trash2, Loader2, AlertCircle } from "lucide-react";
+import { Plus, Play, Square, Pencil, Trash2, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import CameraFormModal from "@/components/cameras/CameraFormModal";
 
 export default function CamerasPage() {
@@ -11,6 +11,8 @@ export default function CamerasPage() {
   const [editingCamera, setEditingCamera] = useState<Camera | null>(null);
   const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
   const [streamErrors, setStreamErrors] = useState<Record<number, string>>({});
+  const [bulkBusy, setBulkBusy] = useState<"start" | "stop" | null>(null);
+  const [bulkNotice, setBulkNotice] = useState<{ text: string; ok: boolean } | null>(null);
 
   useEffect(() => {
     camerasApi.list().then((data) => {
@@ -19,22 +21,85 @@ export default function CamerasPage() {
     });
   }, [setCameras]);
 
+  const apiError = (err: unknown, fallback: string) =>
+    (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? fallback;
+
+  const clearStreamError = (id: number) =>
+    setStreamErrors((e) => {
+      const n = { ...e };
+      delete n[id];
+      return n;
+    });
+
   const handleToggleStream = async (camera: Camera) => {
+    if (bulkBusy) return;
+    setBulkNotice(null);
     setTogglingIds((s) => new Set(s).add(camera.id));
-    setStreamErrors((e) => { const n = { ...e }; delete n[camera.id]; return n; });
+    clearStreamError(camera.id);
     try {
       const updated = camera.is_streaming
         ? await camerasApi.stop(camera.id)
         : await camerasApi.start(camera.id);
       updateCamera(updated);
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
-        "Failed to toggle stream";
-      setStreamErrors((e) => ({ ...e, [camera.id]: msg }));
+      setStreamErrors((e) => ({ ...e, [camera.id]: apiError(err, "Failed to toggle stream") }));
     } finally {
-      setTogglingIds((s) => { const n = new Set(s); n.delete(camera.id); return n; });
+      setTogglingIds((s) => {
+        const n = new Set(s);
+        n.delete(camera.id);
+        return n;
+      });
     }
+  };
+
+  const handleBulk = async (action: "start" | "stop") => {
+    const targets =
+      action === "start"
+        ? cameras.filter((c) => !c.is_streaming && c.is_active)
+        : cameras.filter((c) => c.is_streaming);
+    if (!targets.length || bulkBusy || togglingIds.size > 0) return;
+
+    const skippedInactive =
+      action === "start" ? cameras.filter((c) => !c.is_streaming && !c.is_active).length : 0;
+
+    setBulkBusy(action);
+    setBulkNotice(null);
+    setTogglingIds((s) => {
+      const n = new Set(s);
+      targets.forEach((c) => n.add(c.id));
+      return n;
+    });
+    targets.forEach((c) => clearStreamError(c.id));
+
+    const failed: string[] = [];
+    // Sequential calls avoid spawning every detection worker at once.
+    for (const camera of targets) {
+      try {
+        const updated =
+          action === "start" ? await camerasApi.start(camera.id) : await camerasApi.stop(camera.id);
+        updateCamera(updated);
+      } catch (err: unknown) {
+        failed.push(camera.name);
+        setStreamErrors((e) => ({
+          ...e,
+          [camera.id]: apiError(err, `Failed to ${action} stream`),
+        }));
+      }
+    }
+
+    setTogglingIds((s) => {
+      const n = new Set(s);
+      targets.forEach((c) => n.delete(c.id));
+      return n;
+    });
+    setBulkBusy(null);
+
+    const verb = action === "start" ? "Started" : "Stopped";
+    const ok = targets.length - failed.length;
+    const parts = [`${verb} ${ok} of ${targets.length} camera${targets.length !== 1 ? "s" : ""}.`];
+    if (skippedInactive) parts.push(`Skipped ${skippedInactive} inactive.`);
+    if (failed.length) parts.push(`Failed: ${failed.join(", ")}.`);
+    setBulkNotice({ text: parts.join(" "), ok: failed.length === 0 });
   };
 
   const handleDelete = async (id: number) => {
@@ -57,105 +122,160 @@ export default function CamerasPage() {
     setEditingCamera(null);
   };
 
+  const startableCount = cameras.filter((c) => !c.is_streaming && c.is_active).length;
+  const stoppableCount = cameras.filter((c) => c.is_streaming).length;
+  const streamingCount = cameras.filter((c) => c.is_streaming).length;
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Cameras</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {cameras.length} camera{cameras.length !== 1 ? "s" : ""} ·{" "}
-            {cameras.filter((c) => c.is_streaming).length} streaming
-          </p>
+    <div className="space-y-3">
+      <div className="panel">
+        <div className="panel-head">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className="ops-label text-primary">02 / SOURCES</span>
+            <h2 className="ops-title">Camera registry</h2>
+            <span className="ops-label">
+              {cameras.length} configured · {streamingCount} streaming
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => handleBulk("start")}
+              disabled={loading || !!bulkBusy || togglingIds.size > 0 || startableCount === 0}
+              title="Start all active cameras that are not already streaming"
+              className="ops-button"
+            >
+              {bulkBusy === "start" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Play className="h-3.5 w-3.5 text-clear" />
+              )}
+              Start All
+            </button>
+            <button
+              onClick={() => handleBulk("stop")}
+              disabled={loading || !!bulkBusy || togglingIds.size > 0 || stoppableCount === 0}
+              title="Stop all currently streaming cameras"
+              className="ops-button"
+            >
+              {bulkBusy === "stop" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Square className="h-3.5 w-3.5 text-destructive" />
+              )}
+              Stop All
+            </button>
+            <button
+              onClick={() => { setEditingCamera(null); setModalOpen(true); }}
+              disabled={!!bulkBusy}
+              className="ops-button ops-button-primary"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add Camera
+            </button>
+          </div>
         </div>
-        <button
-          onClick={() => { setEditingCamera(null); setModalOpen(true); }}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90"
-        >
-          <Plus className="h-4 w-4" />
-          Add Camera
-        </button>
       </div>
 
+      {bulkNotice && (
+        <div
+          className={`ops-notice ${bulkNotice.ok ? "ops-notice-clear" : "ops-notice-alert"}`}
+        >
+          {bulkNotice.ok ? (
+            <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+          ) : (
+            <AlertCircle className="h-4 w-4 flex-shrink-0" />
+          )}
+          <span className="flex-1">{bulkNotice.text}</span>
+          <button
+            onClick={() => setBulkNotice(null)}
+            className="text-current opacity-70 hover:opacity-100"
+            aria-label="Dismiss notification"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {loading ? (
-        <div className="flex items-center gap-2 text-muted-foreground py-8 justify-center">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <span className="text-sm">Loading cameras…</span>
+        <div className="panel px-4 py-12">
+          <div className="flex items-center justify-center gap-2 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="ops-label">Reading camera registry…</span>
+          </div>
         </div>
       ) : cameras.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground border border-dashed border-border rounded-lg space-y-2">
-          <p className="text-sm font-medium">No cameras yet</p>
-          <p className="text-xs">Click <strong>Add Camera</strong> to connect your first RTSP stream.</p>
+        <div className="panel relative px-6 py-16 text-center">
+          <div className="hazard-rail absolute left-0 top-0 bottom-0 w-1" aria-hidden="true" />
+          <p className="ops-title">No cameras registered</p>
+          <p className="text-xs text-muted-foreground mt-2">
+            Add a camera to connect an RTSP or HTTP stream.
+          </p>
         </div>
       ) : (
         <div className="space-y-2">
           {cameras.map((camera) => {
             const isToggling = togglingIds.has(camera.id);
             const error = streamErrors[camera.id];
+            const statusText = isToggling
+              ? camera.is_streaming ? "Stopping…" : "Connecting…"
+              : camera.is_streaming ? "Live" : "Offline";
             return (
-              <div
-                key={camera.id}
-                className="rounded-lg border border-border bg-card overflow-hidden"
-              >
+              <div key={camera.id} className="panel relative overflow-hidden">
+                <div
+                  className={`absolute left-0 top-0 bottom-0 w-0.5 ${
+                    camera.is_streaming ? "bg-clear" : "bg-border"
+                  }`}
+                  aria-hidden="true"
+                />
                 <div className="flex items-center gap-4 px-4 py-3">
-                  {/* Status dot */}
                   <div className="flex-shrink-0">
                     {isToggling ? (
                       <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                     ) : (
-                      <div
-                        className={`h-2.5 w-2.5 rounded-full ${
+                      <span
+                        className={`status-dot block ${
                           camera.is_streaming
-                            ? "bg-green-400 shadow-[0_0_6px_2px_rgba(74,222,128,0.4)] animate-pulse"
-                            : "bg-gray-600"
+                            ? "bg-clear animate-pulse"
+                            : "bg-muted-foreground/40"
                         }`}
                       />
                     )}
                   </div>
 
-                  {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-2">
-                      <p className="font-medium text-sm">{camera.name}</p>
+                    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                      <p className="text-sm font-medium">{camera.name}</p>
                       {camera.location && (
-                        <span className="text-xs text-muted-foreground truncate">{camera.location}</span>
+                        <span className="ops-label truncate">{camera.location}</span>
                       )}
-                      <span
-                        className={`ml-auto text-xs font-medium ${
-                          isToggling
-                            ? "text-muted-foreground"
-                            : camera.is_streaming
-                            ? "text-green-400"
-                            : "text-muted-foreground"
-                        }`}
-                      >
-                        {isToggling
-                          ? camera.is_streaming ? "Stopping…" : "Connecting…"
+                      <span className={`ops-chip ml-auto ${
+                        isToggling
+                          ? "ops-chip-warn"
                           : camera.is_streaming
-                          ? "Live"
-                          : "Offline"}
+                          ? "ops-chip-clear"
+                          : "ops-chip-neutral"
+                      }`}>
+                        {statusText}
                       </span>
                     </div>
-                    <p className="text-xs text-muted-foreground font-mono truncate mt-0.5 max-w-sm">
-                      {/* Mask password in displayed URL */}
+                    <p className="font-mono text-xs text-muted-foreground truncate mt-1 max-w-xl">
                       {camera.rtsp_url.replace(/:([^@/]+)@/, ":••••@")}
                     </p>
                   </div>
 
-                  {/* FPS badge */}
-                  <span className="hidden md:block text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded flex-shrink-0">
+                  <span className="ops-chip ops-chip-neutral hidden md:inline-flex flex-shrink-0">
                     {camera.fps_limit} fps
                   </span>
 
-                  {/* Actions */}
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <button
                       onClick={() => handleToggleStream(camera)}
-                      disabled={isToggling}
+                      disabled={isToggling || !!bulkBusy}
                       title={camera.is_streaming ? "Stop stream" : "Start stream"}
-                      className={`p-2 rounded transition-colors disabled:opacity-40 ${
+                      className={`icon-button ${
                         camera.is_streaming
-                          ? "text-green-400 hover:bg-destructive/10 hover:text-destructive"
-                          : "text-muted-foreground hover:bg-green-900/20 hover:text-green-400"
+                          ? "hover:text-destructive"
+                          : "hover:text-clear"
                       }`}
                     >
                       {isToggling ? (
@@ -166,31 +286,29 @@ export default function CamerasPage() {
                         <Play className="h-4 w-4" />
                       )}
                     </button>
-
                     <button
                       onClick={() => { setEditingCamera(camera); setModalOpen(true); }}
+                      disabled={!!bulkBusy}
                       title="Edit camera"
-                      className="p-2 rounded text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                      className="icon-button"
                     >
                       <Pencil className="h-4 w-4" />
                     </button>
-
                     <button
                       onClick={() => handleDelete(camera.id)}
                       title="Delete camera"
-                      disabled={camera.is_streaming}
-                      className="p-2 rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors disabled:opacity-30"
+                      disabled={camera.is_streaming || !!bulkBusy}
+                      className="icon-button hover:text-destructive"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
 
-                {/* Error row */}
                 {error && (
-                  <div className="flex items-center gap-2 px-4 py-2 bg-destructive/10 border-t border-destructive/20 text-xs text-destructive">
+                  <div className="ops-notice ops-notice-alert border-t-0">
                     <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
-                    {error}
+                    <span>{error}</span>
                   </div>
                 )}
               </div>

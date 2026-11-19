@@ -4,7 +4,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func
+from sqlalchemy import Text, and_, cast, func, select
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
@@ -29,7 +29,7 @@ def _build_response(v: Violation) -> ViolationResponse:
         screenshot_path=v.screenshot_path,
         screenshot_url=screenshot_url,
         missing_classes=v.missing_classes,
-        detection_conf=float(v.detection_conf) if v.detection_conf else None,
+        detection_conf=float(v.detection_conf) if v.detection_conf is not None else None,
         acknowledged=v.acknowledged,
         acknowledged_by=v.acknowledged_by,
         acknowledged_at=v.acknowledged_at,
@@ -50,10 +50,16 @@ async def export_csv(
     camera_id: int | None = Query(None),
     from_date: datetime | None = Query(None),
     to_date: datetime | None = Query(None),
+    limit: int = Query(1000, ge=1, le=10000),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    query = select(Violation).options(selectinload(Violation.camera)).order_by(Violation.occurred_at.desc())
+    query = (
+        select(Violation)
+        .options(selectinload(Violation.camera))
+        .order_by(Violation.occurred_at.desc())
+        .limit(limit)
+    )
     conditions = []
     if camera_id:
         conditions.append(Violation.camera_id == camera_id)
@@ -95,7 +101,7 @@ async def list_violations(
     from_date: datetime | None = Query(None),
     to_date: datetime | None = Query(None),
     cursor: int | None = Query(None),
-    limit: int = Query(50, le=200),
+    limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
@@ -110,6 +116,10 @@ async def list_violations(
         conditions.append(Violation.camera_id == camera_id)
     if acknowledged is not None:
         conditions.append(Violation.acknowledged == acknowledged)
+    if missing_class:
+        # Filter in SQL so pagination applies to the filtered set.
+        escaped = missing_class.replace("\\", "\\\\").replace('"', '\\"')
+        conditions.append(cast(Violation.missing_classes, Text).like(f'%"{escaped}"%'))
     if from_date:
         conditions.append(Violation.occurred_at >= from_date)
     if to_date:
@@ -121,9 +131,6 @@ async def list_violations(
 
     result = await db.execute(query)
     violations = result.scalars().all()
-
-    if missing_class:
-        violations = [v for v in violations if missing_class in (v.missing_classes or [])]
 
     return [_build_response(v) for v in violations]
 
@@ -159,7 +166,7 @@ async def acknowledge_violation(
     if not v:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Violation not found")
     v.acknowledged = body.acknowledged
-    v.acknowledged_by = user.id
+    v.acknowledged_by = user.id if body.acknowledged else None
     from datetime import timezone
     v.acknowledged_at = datetime.now(timezone.utc) if body.acknowledged else None
     await db.flush()

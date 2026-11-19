@@ -24,28 +24,38 @@ export default function CameraGrid({ cameras }: Props) {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">Grid:</span>
-        {GRID_SIZES.map(({ cols: c, label, icon: Icon }) => (
-          <button
-            key={c}
-            onClick={() => setCols(c)}
-            title={label}
-            className={`p-1.5 rounded ${
-              cols === c ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Icon className="h-4 w-4" />
-          </button>
-        ))}
-        <span className="text-xs text-muted-foreground ml-2">{cameras.length} camera{cameras.length !== 1 ? "s" : ""}</span>
+    <div className="space-y-3">
+      <div className="panel-head">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <span className="ops-label text-primary">01 / MONITOR</span>
+          <h2 className="ops-title">Camera wall</h2>
+          <span className="ops-label">{cameras.length} configured</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="ops-label mr-2">Grid</span>
+          {GRID_SIZES.map(({ cols: c, label, icon: Icon }) => (
+            <button
+              key={c}
+              onClick={() => setCols(c)}
+              title={label}
+              className={`p-1.5 border transition-colors ${
+                cols === c
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-panel-raised text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+            </button>
+          ))}
+        </div>
       </div>
 
       {cameras.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground">
+        <div className="panel px-6 py-16 text-center">
           <p className="text-sm">No cameras configured.</p>
-          <p className="text-xs mt-1">Go to Cameras to add your first RTSP stream.</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Go to Cameras to add your first RTSP stream.
+          </p>
         </div>
       ) : (
         <div className={`grid ${gridClass[cols] || "grid-cols-2"} gap-3`}>

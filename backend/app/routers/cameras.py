@@ -1,5 +1,9 @@
 import base64
+import ipaddress
 import json
+import os
+from urllib.parse import urlparse
+
 import cv2
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,12 +12,34 @@ from sqlalchemy import select
 from app.database import get_db
 from app.models.camera import Camera
 from app.models.user import User
-from app.core.dependencies import get_current_user
+from app.models.violation import Violation
+from app.core.dependencies import get_current_user, require_admin
 from app.schemas.camera import CameraCreate, CameraUpdate, CameraResponse, CameraTestResponse
 from app.services.camera_service import camera_manager
+from app.services.stream_url import normalize_stream_url
 from app.redis_client import get_redis
 
 router = APIRouter(prefix="/api/cameras", tags=["cameras"])
+
+_ALLOWED_SCHEMES = {"rtsp", "rtsps", "http", "https"}
+
+
+def _validate_stream_url(url: str) -> None:
+    """Reject URLs that would turn the connection test into an SSRF probe."""
+    parsed = urlparse(url)
+    if parsed.scheme.lower() not in _ALLOWED_SCHEMES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported stream URL scheme")
+    host = (parsed.hostname or "").lower()
+    if not host:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid stream URL")
+    if host in {"localhost", "localhost.localdomain"} or host.endswith(".localhost"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Loopback addresses are not allowed")
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return  # A hostname — DNS resolution is left to the camera worker.
+    if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Private or loopback addresses are not allowed")
 
 
 @router.get("", response_model=list[CameraResponse])
@@ -26,7 +52,11 @@ async def list_cameras(db: AsyncSession = Depends(get_db), _: User = Depends(get
 async def create_camera(
     body: CameraCreate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)
 ):
-    camera = Camera(**body.model_dump())
+    rtsp_url = normalize_stream_url(body.rtsp_url)
+    _validate_stream_url(rtsp_url)
+    payload = body.model_dump()
+    payload["rtsp_url"] = rtsp_url
+    camera = Camera(**payload)
     db.add(camera)
     await db.flush()
     await db.refresh(camera)
@@ -44,7 +74,11 @@ async def update_camera(
     camera_id: int, body: CameraUpdate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)
 ):
     camera = await _get_or_404(db, camera_id)
-    for field, value in body.model_dump(exclude_none=True).items():
+    payload = body.model_dump(exclude_none=True)
+    if payload.get("rtsp_url") is not None:
+        payload["rtsp_url"] = normalize_stream_url(payload["rtsp_url"])
+        _validate_stream_url(payload["rtsp_url"])
+    for field, value in payload.items():
         setattr(camera, field, value)
     await db.flush()
     await db.refresh(camera)
@@ -53,10 +87,20 @@ async def update_camera(
 
 @router.delete("/{camera_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_camera(
-    camera_id: int, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)
+    camera_id: int, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)
 ):
     camera = await _get_or_404(db, camera_id)
     await camera_manager.stop_stream(camera_id)
+
+    # Remove evidence belonging to this camera so no orphaned files remain.
+    result = await db.execute(select(Violation).where(Violation.camera_id == camera_id))
+    for violation in result.scalars().all():
+        path = violation.screenshot_path
+        if path and os.path.exists(path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
     await db.delete(camera)
 
 
@@ -65,6 +109,8 @@ async def start_stream(
     camera_id: int, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)
 ):
     camera = await _get_or_404(db, camera_id)
+    if not camera.is_active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Camera is inactive")
     await camera_manager.start_stream(camera)
     camera.is_streaming = True
     await db.flush()
@@ -101,6 +147,7 @@ async def test_url(
     rtsp_url = body.get("rtsp_url", "").strip()
     if not rtsp_url:
         return CameraTestResponse(success=False, message="No URL provided")
+    _validate_stream_url(rtsp_url)
     return await _run_connection_test(rtsp_url)
 
 
@@ -113,6 +160,8 @@ async def test_connection(
 
 
 async def _run_connection_test(rtsp_url: str) -> CameraTestResponse:
+    rtsp_url = normalize_stream_url(rtsp_url)
+    _validate_stream_url(rtsp_url)
     import asyncio
     loop = asyncio.get_running_loop()
 

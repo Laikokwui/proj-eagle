@@ -1,21 +1,20 @@
 FROM python:3.11-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1 libglib2.0-0 libsm6 libxext6 libxrender-dev \
-    ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
+# Dependencies first so source edits reuse the cached layer. No apt packages
+# are needed: headless OpenCV bundles FFmpeg and needs no X11/GL libraries.
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-
-RUN mkdir -p /data/models /data/screenshots
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir --no-deps ultralytics==8.3.55 \
+    && python -c "import cv2, ultralytics"
 
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# Git checks this file out with CRLF on Windows; a trailing \r in the shebang
+# makes exec fail with "no such file or directory" and the API crash-loops.
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
+
+COPY . .
 
 EXPOSE 8000
 

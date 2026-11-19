@@ -26,7 +26,9 @@ async def save_violation(
     filepath = os.path.join(settings.screenshots_dir, filename)
 
     try:
-        cv2.imwrite(filepath, frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        if not cv2.imwrite(filepath, frame, [cv2.IMWRITE_JPEG_QUALITY, 85]):
+            log.error("screenshot_save_error", path=filepath, reason="imwrite returned False")
+            filepath = None
     except Exception as e:
         log.error("screenshot_save_error", error=str(e))
         filepath = None

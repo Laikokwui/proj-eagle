@@ -3,7 +3,7 @@ import os
 import re
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -11,12 +11,13 @@ from app.config import settings
 from app.database import get_db
 from app.models.ai_model import AIModel
 from app.models.user import User
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, require_admin
+from app.redis_client import get_redis
 from app.schemas.ai_model import (
     AIModelResponse, AIModelDownloadRequest, HFModelSearchResult,
     UltralyticsModelInfo, AIModelRulesUpdate,
 )
-from app.services.model_service import model_service
+from app.services.model_service import ModelCredentialError, model_service
 from app.services.detection_service import detection_service
 
 router = APIRouter(prefix="/api/models", tags=["models"])
@@ -50,17 +51,34 @@ async def list_ultralytics(_: User = Depends(get_current_user)):
 
 @router.get("/huggingface/search", response_model=list[HFModelSearchResult])
 async def search_huggingface(q: str = "ppe", _: User = Depends(get_current_user)):
-    return await model_service.search_huggingface(q)
+    try:
+        return await model_service.search_huggingface(q)
+    except ModelCredentialError as exc:
+        # 401 is an upstream/provider problem. Using 401 here would trigger the
+        # frontend's app-auth refresh flow and log the user out.
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
 
 
 @router.post("/download", status_code=status.HTTP_202_ACCEPTED)
 async def start_download(
     body: AIModelDownloadRequest,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
 ):
+    redis = await get_redis()
+    lock_key = f"model_download_active:{body.source}:{body.model_id}"
+    existing = await redis.get(lock_key)
+    if existing:
+        # Already downloading — return the existing task instead of racing on
+        # the same destination file.
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"task_id": existing.decode() if isinstance(existing, bytes) else existing},
+        )
+
     task_id = str(uuid.uuid4())
-    asyncio.create_task(model_service.download_model(task_id, body, db))
+    await redis.set(lock_key, task_id, ex=3600)
+    asyncio.create_task(model_service.download_model(task_id, body, db, lock_key=lock_key))
     return {"task_id": task_id}
 
 
@@ -74,7 +92,7 @@ async def download_progress(task_id: str, _: User = Depends(get_current_user)):
 
 @router.post("/{model_id}/activate", response_model=AIModelResponse)
 async def activate_model(
-    model_id: int, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)
+    model_id: int, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)
 ):
     result = await db.execute(select(AIModel).where(AIModel.id == model_id))
     model = result.scalar_one_or_none()
@@ -90,13 +108,14 @@ async def activate_model(
         model.file_path,
         model.ppe_class_ids or [],
         model.ppe_class_names or [],
+        model_id=model.id,
     )
     return model
 
 
 @router.delete("/{model_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_model(
-    model_id: int, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)
+    model_id: int, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)
 ):
     result = await db.execute(select(AIModel).where(AIModel.id == model_id))
     model = result.scalar_one_or_none()
@@ -113,7 +132,7 @@ async def update_rules(
     model_id: int,
     body: AIModelRulesUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
 ):
     result = await db.execute(select(AIModel).where(AIModel.id == model_id))
     model = result.scalar_one_or_none()
@@ -128,6 +147,7 @@ async def update_rules(
             model.file_path,
             model.ppe_class_ids,
             model.ppe_class_names,
+            model_id=model.id,
         )
     return model
 
@@ -137,7 +157,7 @@ async def upload_model(
     file: UploadFile = File(...),
     name: str = Form(...),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
 ):
     if not (file.filename or "").lower().endswith(".pt"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only .pt files are supported")
@@ -150,7 +170,14 @@ async def upload_model(
         base, ext = os.path.splitext(safe_filename)
         dest_path = os.path.join(settings.models_dir, f"{base}_{uuid.uuid4().hex[:6]}{ext}")
 
-    contents = await file.read()
+    max_bytes = settings.max_upload_mb * 1024 * 1024
+    contents = await file.read(max_bytes + 1)
+    if len(contents) > max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Model file exceeds the {settings.max_upload_mb} MB limit",
+        )
+
     with open(dest_path, "wb") as f:
         f.write(contents)
 

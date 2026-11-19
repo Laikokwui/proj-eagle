@@ -3,6 +3,7 @@ import { camerasApi } from "@/api/cameras";
 import { useCamerasStore } from "@/store/cameras";
 import { useAlertSocket } from "@/hooks/useAlertSocket";
 import CameraGrid from "@/components/dashboard/CameraGrid";
+import { Loader2 } from "lucide-react";
 
 export default function DashboardPage() {
   useAlertSocket();
@@ -18,8 +19,11 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <p className="text-muted-foreground text-sm">Loading cameras...</p>
+      <div className="panel px-4 py-14">
+        <div className="flex items-center justify-center gap-2 text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="ops-label">Loading camera wall…</span>
+        </div>
       </div>
     );
   }

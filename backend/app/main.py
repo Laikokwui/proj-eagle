@@ -8,7 +8,8 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.redis_client import close_redis
-from app.routers import auth, cameras, models, violations, stream
+from app.routers import auth, cameras, integrations, models, violations, stream
+from app.version import APP_NAME, APP_VERSION
 
 log = structlog.get_logger()
 
@@ -33,10 +34,11 @@ async def lifespan(app: FastAPI):
                 active_model.file_path,
                 active_model.ppe_class_ids or [],
                 active_model.ppe_class_names or [],
+                model_id=active_model.id,
             )
             rule_count = len(active_model.ppe_class_names or active_model.ppe_class_ids or [])
             log.info("active_model_restored", name=active_model.name, violation_classes=rule_count)
-    log.info("startup", data_dir=settings.data_dir)
+    log.info("startup", version=APP_VERSION, data_dir=settings.data_dir)
     yield
     from app.services.camera_service import camera_manager
     await camera_manager.stop_all()
@@ -44,11 +46,11 @@ async def lifespan(app: FastAPI):
     log.info("shutdown")
 
 
-app = FastAPI(title="PPE Compliance Monitor", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title=APP_NAME, version=APP_VERSION, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -56,6 +58,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(cameras.router)
+app.include_router(integrations.router)
 app.include_router(models.router)
 app.include_router(violations.router)
 app.include_router(stream.router)
@@ -63,6 +66,11 @@ app.include_router(stream.router)
 screenshots_dir = settings.screenshots_dir
 os.makedirs(screenshots_dir, exist_ok=True)
 app.mount("/screenshots", StaticFiles(directory=screenshots_dir), name="screenshots")
+
+
+@app.get("/api/version")
+async def version():
+    return {"name": APP_NAME, "version": APP_VERSION}
 
 
 @app.get("/api/health")
@@ -73,5 +81,6 @@ async def health():
     await redis.ping()
     return {
         "status": "ok",
+        "version": APP_VERSION,
         "active_streams": len(camera_manager._capture_workers),
     }

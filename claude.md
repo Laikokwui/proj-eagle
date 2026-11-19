@@ -56,11 +56,12 @@ npm run dev      # proxies /api and /ws to localhost:8000
 | `DATA_DIR` | /data | Root for models/ and screenshots/ |
 | `DETECTION_FPS` | 5 | Inference rate per camera |
 | `DETECTION_CONFIDENCE` | 0.5 | YOLO confidence threshold |
-| `HF_TOKEN` | (optional) | HuggingFace token for private models |
+| `HF_TOKEN` | (optional) | HuggingFace token fallback for private models |
+| `ULTRALYTICS_API_KEY` | (optional) | Ultralytics Platform API key fallback for private models |
 
 ## GPU Support
 
-The `docker-compose.override.yml` enables NVIDIA GPU passthrough automatically when `docker compose up` is run. Requires NVIDIA Container Toolkit on the host.
+GPU passthrough is opt-in via `docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build`. The override is NOT loaded automatically. Requires NVIDIA Container Toolkit on the host.
 
 YOLO workers auto-detect CUDA via `torch.cuda.is_available()`.
 

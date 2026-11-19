@@ -4,32 +4,265 @@
 
 @layer base {
   :root {
-    --background: 222 84% 5%;
-    --foreground: 210 40% 98%;
-    --card: 222 47% 11%;
-    --card-foreground: 210 40% 98%;
-    --border: 217 33% 20%;
-    --input: 217 33% 20%;
-    --primary: 217 91% 60%;
-    --primary-foreground: 222 84% 5%;
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 217 33% 17%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 63% 50%;
-    --destructive-foreground: 210 40% 98%;
-    --ring: 217 91% 60%;
-    --radius: 0.5rem;
+    --ink: 165 20% 5%;          /* #0A0F0E */
+    --paper: 120 16% 93%;       /* #E9EFE9 */
+    --panel: 165 18% 9%;        /* #121A18 */
+    --panel-raised: 162 16% 12%;/* #1A2421 */
+    --line: 158 14% 22%;        /* #30403A */
+
+    --background: var(--ink);
+    --foreground: var(--paper);
+    --card: var(--panel);
+    --card-foreground: var(--paper);
+    --border: var(--line);
+    --input: var(--line);
+    --primary: 45 90% 48%;      /* #F2B705 */
+    --primary-foreground: var(--ink);
+    --secondary: var(--panel-raised);
+    --secondary-foreground: var(--paper);
+    --muted: var(--panel-raised);
+    --muted-foreground: 145 9% 61%; /* #94A59B */
+    --accent: 176 33% 48%;      /* #4DA6A0 */
+    --accent-foreground: var(--ink);
+    --destructive: 6 67% 52%;   /* #D64232 */
+    --destructive-foreground: var(--paper);
+    --ring: 45 90% 48%;
+
+    --hazard: #f2b705;
+    --hazard-dark: #0a0f0e;
+    --hazard-orange: #e6611e;
+    --fault: #d64232;
+    --clear: #35b77a;
+    --signal: #4da6a0;
+
+    --radius: 0.125rem;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  ::selection {
+    background: var(--hazard);
+    color: var(--hazard-dark);
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  input[type="range"],
+  input[type="checkbox"] {
+    accent-color: var(--hazard);
   }
 }
 
-@layer base {
-  * {
-    @apply border-border;
+@layer components {
+  .hazard-rail {
+    background: repeating-linear-gradient(
+      135deg,
+      var(--hazard) 0,
+      var(--hazard) 8px,
+      var(--hazard-dark) 8px,
+      var(--hazard-dark) 16px
+    );
   }
-  body {
-    @apply bg-background text-foreground;
+
+  .ops-grid {
+    background-image:
+      linear-gradient(to right, rgba(148, 165, 155, 0.045) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(148, 165, 155, 0.045) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  .panel {
+    @apply border border-border bg-card;
+    border-radius: 2px;
+  }
+
+  .panel-head {
+    @apply flex items-center justify-between border-b border-border px-4 py-3;
+    background: hsl(var(--panel-raised));
+  }
+
+  .ops-label {
+    @apply font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground;
+  }
+
+  .ops-title {
+    @apply text-base font-semibold tracking-tight;
+  }
+
+  .ops-button {
+    @apply inline-flex items-center justify-center gap-2 border border-border px-3 py-2 text-xs font-medium uppercase tracking-[0.08em] text-foreground transition-colors;
+    border-radius: 2px;
+  }
+  .ops-button:hover:not(:disabled) {
+    background: hsl(var(--panel-raised));
+    border-color: hsl(var(--muted-foreground) / 0.5);
+  }
+  .ops-button:disabled {
+    @apply cursor-not-allowed opacity-40;
+  }
+  .ops-button-primary {
+    @apply border-primary bg-primary text-primary-foreground;
+  }
+  .ops-button-primary:hover:not(:disabled) {
+    background: var(--hazard-orange);
+    border-color: var(--hazard-orange);
+  }
+  .ops-button-danger {
+    @apply border-destructive/60 text-destructive;
+  }
+  .ops-button-danger:hover:not(:disabled) {
+    @apply bg-destructive/15;
+  }
+
+  .ops-input {
+    @apply w-full border border-input bg-panel-raised px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary;
+    border-radius: 2px;
+  }
+
+  .ops-table {
+    @apply w-full border-collapse text-sm;
+  }
+  .ops-table th {
+    @apply ops-label border-b border-border bg-panel-raised px-3 py-2 text-left;
+  }
+  .ops-table td {
+    @apply border-b border-border/70 px-3 py-2.5 align-middle;
+  }
+  .ops-table tbody tr:hover {
+    background: hsl(var(--panel-raised) / 0.6);
+  }
+
+  .ops-chip {
+    @apply inline-flex items-center gap-1.5 border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider;
+    border-radius: 1px;
+  }
+  .ops-chip-alert {
+    @apply border-destructive/50 bg-destructive/10 text-destructive;
+  }
+  .ops-chip-clear {
+    @apply border-clear/50 bg-clear/10 text-clear;
+  }
+  .ops-chip-warn {
+    @apply border-primary/50 bg-primary/10 text-primary;
+  }
+  .ops-chip-neutral {
+    @apply border-border bg-secondary text-muted-foreground;
+  }
+
+  .ops-notice {
+    @apply flex items-start gap-2 border px-3 py-2 text-xs;
+    border-radius: 2px;
+  }
+  .ops-notice-alert {
+    @apply border-destructive/50 bg-destructive/10 text-destructive;
+  }
+  .ops-notice-warn {
+    @apply border-primary/50 bg-primary/10 text-primary;
+  }
+  .ops-notice-clear {
+    @apply border-clear/50 bg-clear/10 text-clear;
+  }
+  .ops-notice-info {
+    @apply border-info/40 bg-info/10 text-info;
+  }
+
+  .ops-select {
+    @apply ops-input py-1.5 font-mono text-xs;
+    width: auto;
+  }
+
+  .reticle::before,
+  .reticle::after {
+    content: "";
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    border-color: var(--hazard);
+    border-style: solid;
+    pointer-events: none;
+  }
+  .reticle::before {
+    top: 8px;
+    left: 8px;
+    border-width: 1px 0 0 1px;
+  }
+  .reticle::after {
+    right: 8px;
+    bottom: 8px;
+    border-width: 0 1px 1px 0;
+  }
+
+  .modal-backdrop {
+    @apply fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4;
+  }
+
+  .modal-panel {
+    @apply panel w-full max-w-lg overflow-y-auto;
+    max-height: 90vh;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  }
+
+  .modal-head {
+    @apply panel-head sticky top-0 z-10;
+  }
+
+  .field-label {
+    @apply ops-label mb-2 block;
+  }
+
+  .icon-button {
+    @apply inline-flex h-8 w-8 items-center justify-center border border-border text-muted-foreground transition-colors;
+    border-radius: 2px;
+  }
+  .icon-button:hover:not(:disabled) {
+    @apply border-primary/50 bg-panel-raised text-foreground;
+  }
+  .icon-button:disabled {
+    @apply cursor-not-allowed opacity-30;
+  }
+
+  .segment {
+    @apply flex border border-border;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .segment button {
+    @apply flex-1 px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground transition-colors;
+  }
+  .segment button[data-active="true"] {
+    @apply bg-primary text-primary-foreground;
+  }
+  .segment button:not([data-active="true"]):hover {
+    @apply bg-panel-raised text-foreground;
+  }
+
+  .progress-track {
+    @apply h-1.5 w-full border border-border bg-panel-raised;
+    border-radius: 0;
+  }
+  .progress-fill {
+    @apply h-full bg-primary transition-all;
+  }
+
+  .data-grid {
+    @apply grid grid-cols-2 gap-px border border-border bg-border;
+  }
+  .data-grid > div {
+    @apply bg-panel p-3;
+  }
+
+  .status-dot {
+    @apply h-2.5 w-2.5 flex-shrink-0;
   }
 }

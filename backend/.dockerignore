@@ -1,0 +1,14 @@
+# Runtime image only needs application source, migrations, and the entrypoint.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+tests/
+pytest.ini
+.env
+.env.*
+*.log
+data/
+.git/
+.gitignore
+Dockerfile
+.dockerignore

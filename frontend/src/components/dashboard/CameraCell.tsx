@@ -18,7 +18,7 @@ export default function CameraCell({ camera }: Props) {
   const isConnecting = camera.is_streaming && !hasFrame;
 
   return (
-    <div className="relative bg-black rounded-lg overflow-hidden aspect-video border border-border group">
+    <div className="reticle relative bg-black aspect-video border border-border overflow-hidden">
       <canvas
         ref={canvasRef}
         className={`w-full h-full object-contain ${camera.is_streaming ? "block" : "hidden"}`}
@@ -27,38 +27,34 @@ export default function CameraCell({ camera }: Props) {
       {!camera.is_streaming && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted-foreground">
           <WifiOff className="h-8 w-8" />
-          <span className="text-xs">Offline</span>
+          <span className="ops-label">Offline</span>
         </div>
       )}
 
       {isConnecting && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted-foreground bg-black/60">
-          <Loader2 className="h-8 w-8 animate-spin" />
-          <span className="text-xs">Connecting…</span>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted-foreground bg-black/70">
+          <Loader2 className="h-7 w-7 animate-spin text-primary" />
+          <span className="ops-label">Connecting</span>
         </div>
       )}
 
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-2 pb-2 pt-4">
-        <div className="flex items-center gap-2">
-          <div
-            className={`h-2 w-2 rounded-full flex-shrink-0 ${
-              camera.is_streaming
-                ? isConnecting
-                  ? "bg-yellow-400 animate-pulse"
-                  : "bg-green-400 animate-pulse"
-                : "bg-gray-500"
-            }`}
-          />
-          <span className="text-xs text-white font-medium truncate flex-1">{camera.name}</span>
-          {camera.location && (
-            <span className="text-xs text-white/50 truncate hidden group-hover:block">
-              {camera.location}
-            </span>
-          )}
-          {fps !== null && camera.is_streaming && !isConnecting && (
-            <span className="text-xs text-white/60 font-mono flex-shrink-0">{fps} fps</span>
-          )}
-        </div>
+      <div className="absolute bottom-0 left-0 right-0 flex items-center gap-2 border-t border-border/70 bg-black/85 px-3 py-2">
+        <span
+          className={`h-2 w-2 flex-shrink-0 ${
+            camera.is_streaming
+              ? isConnecting
+                ? "bg-primary animate-pulse"
+                : "bg-clear animate-pulse"
+              : "bg-muted-foreground/50"
+          }`}
+        />
+        <span className="text-xs font-medium truncate flex-1">{camera.name}</span>
+        {camera.location && (
+          <span className="ops-label hidden group-hover:inline truncate">{camera.location}</span>
+        )}
+        {fps !== null && camera.is_streaming && !isConnecting && (
+          <span className="ops-label text-primary">{fps} fps</span>
+        )}
       </div>
     </div>
   );

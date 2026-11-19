@@ -69,7 +69,10 @@ rtsp://wowzaec2demo.streamlock.net/vod/mp4:BigBuckBunny_115k.mp4
 | `DATA_DIR` | `/data` | Root for models/ and screenshots/ |
 | `DETECTION_FPS` | `5` | Inference rate per camera |
 | `DETECTION_CONFIDENCE` | `0.5` | YOLO confidence threshold |
-| `HF_TOKEN` | *(optional)* | HuggingFace token for private models |
+| `HF_TOKEN` | *(optional)* | HuggingFace token fallback for private models |
+| `ULTRALYTICS_API_KEY` | *(optional)* | Ultralytics Platform API key fallback for private models |
+
+Tokens can also be saved by an administrator under **Settings → Connected Accounts**. Saved values override environment variables, are encrypted at rest, and are masked in the UI.
 
 ---
 

@@ -1,5 +1,6 @@
-# GPU override — requires NVIDIA Container Toolkit on host
-# Usage: docker compose up  (this file is auto-loaded)
+# Optional GPU override — requires NVIDIA Container Toolkit on host.
+# NOT loaded automatically. Use:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
 services:
   api:
     deploy:

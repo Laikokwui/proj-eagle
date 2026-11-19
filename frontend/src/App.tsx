@@ -4,6 +4,7 @@ import DashboardPage from "@/pages/DashboardPage";
 import CamerasPage from "@/pages/CamerasPage";
 import ModelsPage from "@/pages/ModelsPage";
 import ViolationsPage from "@/pages/ViolationsPage";
+import SettingsPage from "@/pages/SettingsPage";
 import ProtectedRoute from "@/components/layout/ProtectedRoute";
 
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
           <Route path="/cameras" element={<CamerasPage />} />
           <Route path="/models" element={<ModelsPage />} />
           <Route path="/violations" element={<ViolationsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

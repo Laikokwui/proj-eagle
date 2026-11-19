@@ -108,7 +108,12 @@ class DetectionWorker(threading.Thread):
                     if missing and now - last_violation_time > violation_cooldown:
                         last_violation_time = now
                         conf = float(result.boxes.conf.mean().item()) if len(result.boxes.conf) > 0 else 0.0
-                        self._save_violation_sync(annotated, missing, conf, f"Camera {self.camera_id}", None)
+                        from app.services.detection_service import detection_service
+                        self._save_violation_sync(
+                            annotated, missing, conf,
+                            f"Camera {self.camera_id}",
+                            detection_service.get_active_model_id(),
+                        )
                 else:
                     self._publish_detection_status_sync([], [])
 

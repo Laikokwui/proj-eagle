@@ -1,11 +1,24 @@
 import { useEffect, useRef, useState } from "react";
-import { modelsApi, type AIModel, type UltralyticsModelInfo, type HFModelSearchResult } from "@/api/models";
+import { Link } from "react-router-dom";
+import {
+  modelsApi,
+  type AIModel,
+  type DownloadProgress,
+  type HFModelSearchResult,
+  type UltralyticsModelInfo,
+} from "@/api/models";
 import {
   CheckCircle, Download, Trash2, Search, Brain, Upload, Settings2, Loader2, AlertTriangle,
 } from "lucide-react";
 import ModelRulesModal from "@/components/models/ModelRulesModal";
 
 type Tab = "downloaded" | "ultralytics" | "huggingface";
+
+const TABS: { id: Tab; label: string; code: string }[] = [
+  { id: "downloaded", label: "Downloaded", code: "01" },
+  { id: "ultralytics", label: "Ultralytics", code: "02" },
+  { id: "huggingface", label: "Hugging Face", code: "03" },
+];
 
 export default function ModelsPage() {
   const [tab, setTab] = useState<Tab>("downloaded");
@@ -14,8 +27,11 @@ export default function ModelsPage() {
   const [hfResults, setHfResults] = useState<HFModelSearchResult[]>([]);
   const [hfQuery, setHfQuery] = useState("ppe detection yolo");
   const [loadingHf, setLoadingHf] = useState(false);
+  const [hfError, setHfError] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<Record<string, number>>({});
+  const [downloadErrors, setDownloadErrors] = useState<Record<string, string>>({});
+  const [platformRef, setPlatformRef] = useState("");
   const [rulesModel, setRulesModel] = useState<AIModel | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -45,28 +61,50 @@ export default function ModelsPage() {
   const handleDownload = async (source: string, modelId: string, name?: string) => {
     const key = `${source}:${modelId}`;
     setDownloadingId(key);
+    setDownloadErrors((prev) => ({ ...prev, [key]: "" }));
     try {
       const { task_id } = await modelsApi.download(source, modelId, name);
-      const eventSource = new EventSource(`/api/models/download-progress/${task_id}`);
+      // EventSource cannot send an Authorization header, so pass the token.
+      const token = localStorage.getItem("access_token") ?? "";
+      const eventSource = new EventSource(
+        `/api/models/download-progress/${task_id}?token=${encodeURIComponent(token)}`
+      );
       eventSource.onmessage = (e) => {
-        const data = JSON.parse(e.data);
+        const data = JSON.parse(e.data) as DownloadProgress;
         setDownloadProgress((prev) => ({ ...prev, [key]: data.progress_pct }));
         if (data.status === "completed" || data.status === "error") {
           eventSource.close();
           setDownloadingId(null);
-          if (data.status === "completed") modelsApi.list().then(setModels);
+          if (data.status === "completed") {
+            modelsApi.list().then(setModels);
+          } else {
+            setDownloadErrors((prev) => ({ ...prev, [key]: data.message }));
+          }
         }
       };
-    } catch {
+      eventSource.onerror = () => {
+        eventSource.close();
+        setDownloadingId(null);
+        setDownloadErrors((prev) => ({ ...prev, [key]: "Lost connection to download progress." }));
+      };
+    } catch (err) {
       setDownloadingId(null);
+      setDownloadErrors((prev) => ({
+        ...prev,
+        [key]: err instanceof Error ? err.message : "Download could not be started.",
+      }));
     }
   };
 
   const handleHfSearch = async () => {
     setLoadingHf(true);
+    setHfError(null);
     try {
       const results = await modelsApi.searchHuggingFace(hfQuery);
       setHfResults(results);
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setHfError(detail ?? "Hugging Face search failed.");
     } finally {
       setLoadingHf(false);
     }
@@ -104,31 +142,36 @@ export default function ModelsPage() {
   const activeHasNoRules = activeModel && activeModel.ppe_class_names.length === 0 && activeModel.ppe_class_ids.length === 0;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">AI Models</h2>
-        {activeModel && (
-          <div className="flex items-center gap-2 bg-green-900/20 text-green-400 border border-green-800 px-3 py-1.5 rounded-full text-xs font-medium">
-            <CheckCircle className="h-3.5 w-3.5" />
-            Active: {activeModel.name}
+    <div className="space-y-3">
+      <div className="panel">
+        <div className="panel-head">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className="ops-label text-primary">03 / DETECTORS</span>
+            <h2 className="ops-title">Model registry</h2>
+            <span className="ops-label">{models.length} local</span>
           </div>
-        )}
+          {activeModel && (
+            <span className="ops-chip ops-chip-clear">
+              <CheckCircle className="h-3 w-3" />
+              Active: {activeModel.name}
+            </span>
+          )}
+        </div>
       </div>
 
-      {/* Warning: active model has no violation rules */}
       {activeHasNoRules && (
-        <div className="flex items-start gap-3 bg-orange-500/10 border border-orange-500/40 rounded-lg px-4 py-3">
-          <AlertTriangle className="h-4 w-4 text-orange-400 flex-shrink-0 mt-0.5" />
+        <div className="ops-notice ops-notice-warn">
+          <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm text-orange-300 font-medium">No violation rules configured</p>
-            <p className="text-xs text-orange-400/80 mt-0.5">
-              <strong>{activeModel.name}</strong> is active but has no violation classes set — violations will not be logged.
-              Click <strong>Configure Rules</strong> below to select which detected classes trigger a violation.
+            <p className="font-medium">No violation rules configured</p>
+            <p className="mt-1 opacity-80">
+              <span className="font-mono">{activeModel.name}</span> is active but has no violation
+              classes set — violations will not be logged. Select the classes that should trigger an event.
             </p>
           </div>
           <button
             onClick={() => setRulesModel(activeModel)}
-            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-orange-500/20 text-orange-300 border border-orange-500/40 rounded-md text-xs font-medium hover:bg-orange-500/30"
+            className="ops-button ops-button-danger flex-shrink-0"
           >
             <Settings2 className="h-3.5 w-3.5" />
             Configure Rules
@@ -136,114 +179,110 @@ export default function ModelsPage() {
         </div>
       )}
 
-      <div className="flex gap-2 border-b border-border">
-        {(["downloaded", "ultralytics", "huggingface"] as Tab[]).map((t) => (
+      <div className="flex gap-1 border-b border-border">
+        {TABS.map((t) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm capitalize ${
-              tab === t ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`relative px-4 py-2.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors ${
+              tab === t.id
+                ? "text-primary after:absolute after:bottom-[-1px] after:left-0 after:right-0 after:h-0.5 after:bg-primary"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            {t === "downloaded" ? "Downloaded" : t === "ultralytics" ? "Ultralytics" : "HuggingFace"}
+            <span className="mr-2 opacity-60">{t.code}</span>
+            {t.label}
           </button>
         ))}
       </div>
 
       {tab === "downloaded" && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">{models.length} model{models.length !== 1 ? "s" : ""}</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="ops-label">{models.length} model{models.length !== 1 ? "s" : ""}</p>
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm border border-border rounded-md hover:bg-secondary disabled:opacity-50"
+              className="ops-button"
             >
-              {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
               {uploading ? "Uploading…" : "Upload .pt file"}
             </button>
             <input ref={fileInputRef} type="file" accept=".pt" className="hidden" onChange={handleUploadFile} />
           </div>
 
           {uploadError && (
-            <p className="text-xs text-destructive bg-destructive/10 border border-destructive/30 rounded-md px-3 py-2">
-              {uploadError}
-            </p>
+            <div className="ops-notice ops-notice-alert">{uploadError}</div>
           )}
 
           {models.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground text-sm">
-              No models yet. Browse Ultralytics / HuggingFace or upload a .pt file.
+            <div className="panel px-6 py-14 text-center">
+              <p className="ops-title">No local models</p>
+              <p className="text-xs text-muted-foreground mt-2">
+                Browse Ultralytics or Hugging Face, or upload a .pt file.
+              </p>
             </div>
           ) : (
-            <div className="overflow-hidden rounded-lg border border-border">
-              <table className="w-full text-sm">
-                <thead className="bg-secondary">
+            <div className="panel overflow-x-auto">
+              <table className="ops-table">
+                <thead>
                   <tr>
-                    <th className="text-left px-4 py-3 font-medium">Model</th>
-                    <th className="text-left px-4 py-3 font-medium">Source</th>
-                    <th className="text-left px-4 py-3 font-medium hidden md:table-cell">Classes</th>
-                    <th className="text-left px-4 py-3 font-medium">Violation Rules</th>
-                    <th className="text-left px-4 py-3 font-medium hidden md:table-cell">Size</th>
-                    <th className="px-4 py-3" />
+                    <th>Model</th>
+                    <th>Source</th>
+                    <th className="hidden md:table-cell">Classes</th>
+                    <th>Violation rules</th>
+                    <th className="hidden md:table-cell">Size</th>
+                    <th><span className="sr-only">Actions</span></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
+                <tbody>
                   {models.map((model) => {
                     const hasRules = model.ppe_class_names.length > 0 || model.ppe_class_ids.length > 0;
                     const ruleCount = model.ppe_class_names.length || model.ppe_class_ids.length;
                     const needsRules = model.is_active && !hasRules;
                     return (
-                      <tr key={model.id} className={`hover:bg-secondary/50 ${needsRules ? "bg-orange-500/5" : ""}`}>
-                        <td className="px-4 py-3">
+                      <tr key={model.id} className={needsRules ? "bg-hazard/5" : ""}>
+                        <td>
                           <div className="flex items-center gap-2">
-                            {model.is_active && <CheckCircle className="h-3.5 w-3.5 text-green-400 flex-shrink-0" />}
-                            <span className={model.is_active ? "text-green-400 font-medium" : ""}>{model.name}</span>
+                            {model.is_active && <CheckCircle className="h-3.5 w-3.5 text-clear flex-shrink-0" />}
+                            <span className={model.is_active ? "font-medium text-clear" : ""}>{model.name}</span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground capitalize">{model.source}</td>
-                        <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
+                        <td className="font-mono text-xs text-muted-foreground capitalize">{model.source}</td>
+                        <td className="hidden md:table-cell font-mono text-xs text-muted-foreground">
                           {model.class_names.length}
                         </td>
-                        <td className="px-4 py-3">
+                        <td>
                           {hasRules ? (
-                            <span className="text-xs text-destructive font-medium">
-                              {ruleCount} class{ruleCount !== 1 ? "es" : ""}
-                            </span>
+                            <span className="ops-chip ops-chip-alert">{ruleCount} class{ruleCount !== 1 ? "es" : ""}</span>
                           ) : (
-                            <span className={`text-xs ${needsRules ? "text-orange-400 font-medium" : "text-muted-foreground"}`}>
-                              {needsRules ? "⚠ Not set" : "Auto-detect"}
+                            <span className={`ops-chip ${needsRules ? "ops-chip-warn" : "ops-chip-neutral"}`}>
+                              {needsRules ? "Not set" : "Auto-detect"}
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
+                        <td className="hidden md:table-cell font-mono text-xs text-muted-foreground">
                           {model.file_size_mb ? `${model.file_size_mb} MB` : "—"}
                         </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2 justify-end">
+                        <td>
+                          <div className="flex items-center justify-end gap-1">
                             <button
                               onClick={() => setRulesModel(model)}
-                              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium ${
-                                needsRules
-                                  ? "bg-orange-500/20 text-orange-300 border border-orange-500/40 hover:bg-orange-500/30"
-                                  : "border border-border text-muted-foreground hover:text-foreground hover:bg-secondary"
-                              }`}
+                              className={`ops-button ${needsRules ? "ops-button-danger" : ""}`}
                             >
                               <Settings2 className="h-3.5 w-3.5" />
                               {hasRules ? `Rules (${ruleCount})` : "Configure Rules"}
                             </button>
                             {!model.is_active && (
-                              <button
-                                onClick={() => handleActivate(model.id)}
-                                className="px-2 py-1 text-xs bg-primary/10 text-primary rounded hover:bg-primary/20"
-                              >
+                              <button onClick={() => handleActivate(model.id)} className="ops-button">
                                 Set Active
                               </button>
                             )}
                             <button
                               onClick={() => handleDelete(model.id)}
                               disabled={model.is_active}
-                              className="p-2 rounded hover:bg-secondary text-muted-foreground hover:text-destructive disabled:opacity-30"
+                              title="Delete model"
+                              className="icon-button hover:text-destructive"
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
@@ -261,14 +300,56 @@ export default function ModelsPage() {
 
       {tab === "ultralytics" && (
         <div className="space-y-3">
-          <div className="flex items-start gap-3 bg-blue-500/10 border border-blue-500/30 rounded-lg px-4 py-3">
-            <Brain className="h-4 w-4 text-blue-400 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-blue-300/80">
-              These are general-purpose YOLO models that detect 80 common objects (person, car, etc.) — <strong>not PPE-specific</strong>.
-              After downloading and activating, go to <strong>Configure Rules</strong> and select "person" or other classes to test violation detection.
-              For real PPE detection (helmet, vest, gloves), search <strong>HuggingFace</strong> for a PPE-trained model.
+          <div className="ops-notice ops-notice-info">
+            <Brain className="h-4 w-4 flex-shrink-0 mt-0.5" />
+            <p>
+              These are general-purpose YOLO models that detect 80 common objects (person, car, etc.) —{" "}
+              <strong>not PPE-specific</strong>. After downloading and activating, use{" "}
+              <strong>Configure Rules</strong> and select “person” or another class to test detection.
+              For helmet, vest, and glove detection, search Hugging Face for a PPE-trained model.
             </p>
           </div>
+
+          <div className="panel p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="field-label mb-0">Private Platform model</p>
+              <Link to="/settings" className="ops-label text-primary hover:underline">
+                API key setup →
+              </Link>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Use <code className="font-mono text-foreground">owner/project/model</code> for a trained
+              model in your Ultralytics account. This requires an API key in Settings.
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                id="ultralytics-platform-ref"
+                value={platformRef}
+                onChange={(e) => setPlatformRef(e.target.value.trim())}
+                placeholder="acme-vision/inspection/best-model"
+                className="ops-input min-w-0 flex-1 font-mono"
+              />
+              <button
+                onClick={() => {
+                  const parts = platformRef.split("/");
+                  if (parts.length === 3 && parts.every(Boolean)) {
+                    void handleDownload("ultralytics", platformRef, parts[2]);
+                  }
+                }}
+                disabled={platformRef.split("/").length !== 3 || platformRef.split("/").some((p) => !p)}
+                className="ops-button ops-button-primary flex-shrink-0"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download private model
+              </button>
+            </div>
+            {downloadErrors[`ultralytics:${platformRef}`] && (
+              <p className="text-xs text-destructive">
+                {downloadErrors[`ultralytics:${platformRef}`]}
+              </p>
+            )}
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {ultralyticsModels.map((m) => {
               const key = `ultralytics:${m.model_id}`;
@@ -276,27 +357,32 @@ export default function ModelsPage() {
               const isDownloading = downloadingId === key;
               const progress = downloadProgress[key] ?? 0;
               return (
-                <div key={m.model_id} className="bg-card border border-border rounded-lg p-4 space-y-2">
+                <div key={m.model_id} className="panel p-4 space-y-3">
                   <div className="flex items-start justify-between gap-2">
-                    <div>
+                    <div className="min-w-0">
                       <p className="font-medium text-sm">{m.name}</p>
-                      <p className="text-xs text-muted-foreground">{m.description}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{m.description}</p>
                     </div>
-                    <span className="text-xs text-muted-foreground whitespace-nowrap">{m.size_mb} MB</span>
+                    <span className="font-mono text-[10px] text-muted-foreground whitespace-nowrap">
+                      {m.size_mb} MB
+                    </span>
                   </div>
                   {isDownloading && (
-                    <div className="w-full bg-secondary rounded-full h-1.5">
-                      <div className="bg-primary h-1.5 rounded-full transition-all" style={{ width: `${progress}%` }} />
+                    <div className="progress-track">
+                      <div className="progress-fill" style={{ width: `${progress}%` }} />
                     </div>
                   )}
                   <button
                     onClick={() => handleDownload("ultralytics", m.model_id, m.name)}
                     disabled={isDownloaded || isDownloading}
-                    className="w-full flex items-center justify-center gap-2 py-1.5 px-3 text-xs bg-primary/10 text-primary rounded hover:bg-primary/20 disabled:opacity-40"
+                    className={`ops-button w-full ${isDownloaded ? "ops-chip-clear" : ""}`}
                   >
                     {isDownloaded ? <CheckCircle className="h-3.5 w-3.5" /> : <Download className="h-3.5 w-3.5" />}
                     {isDownloaded ? "Downloaded" : isDownloading ? `${Math.round(progress)}%` : "Download"}
                   </button>
+                  {downloadErrors[key] && (
+                    <p className="text-[11px] text-destructive">{downloadErrors[key]}</p>
+                  )}
                 </div>
               );
             })}
@@ -305,23 +391,36 @@ export default function ModelsPage() {
       )}
 
       {tab === "huggingface" && (
-        <div className="space-y-4">
+        <div className="space-y-3">
           <div className="flex gap-2">
             <input
               value={hfQuery}
               onChange={(e) => setHfQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleHfSearch()}
-              placeholder="Search HuggingFace models..."
-              className="flex-1 px-3 py-2 bg-secondary border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="Search Hugging Face models…"
+              className="ops-input flex-1 font-mono"
             />
             <button
               onClick={handleHfSearch}
               disabled={loadingHf}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90 disabled:opacity-50"
+              className="ops-button ops-button-primary flex-shrink-0"
             >
-              {loadingHf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              {loadingHf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+              <span className="hidden sm:inline">Search</span>
             </button>
           </div>
+
+          <div className="ops-notice ops-notice-info">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+            <p>
+              Gated or private repositories need a Hugging Face access token. Add one under{" "}
+              <Link to="/settings" className="text-primary hover:underline">Settings → Connected Accounts</Link>.
+            </p>
+          </div>
+
+          {hfError && (
+            <div className="ops-notice ops-notice-alert">{hfError}</div>
+          )}
 
           {hfResults.length > 0 && (
             <div className="space-y-2">
@@ -331,28 +430,33 @@ export default function ModelsPage() {
                 const isDownloading = downloadingId === key;
                 const progress = downloadProgress[key] ?? 0;
                 return (
-                  <div key={m.model_id} className="flex items-center gap-3 bg-card border border-border rounded-lg p-3">
-                    <Brain className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-mono truncate">{m.model_id}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {m.downloads != null ? `↓ ${m.downloads.toLocaleString()}` : ""}{" "}
-                        {m.likes != null ? `♥ ${m.likes}` : ""}
-                      </p>
-                      {isDownloading && (
-                        <div className="w-full bg-secondary rounded-full h-1 mt-1">
-                          <div className="bg-primary h-1 rounded-full transition-all" style={{ width: `${progress}%` }} />
-                        </div>
-                      )}
+                  <div key={m.model_id} className="panel">
+                    <div className="flex items-center gap-3 p-3">
+                      <Brain className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-mono text-sm truncate">{m.model_id}</p>
+                        <p className="ops-label mt-1">
+                          {m.downloads != null ? `↓ ${m.downloads.toLocaleString()}` : ""}{" "}
+                          {m.likes != null ? `♥ ${m.likes}` : ""}
+                        </p>
+                        {isDownloading && (
+                          <div className="progress-track mt-2">
+                            <div className="progress-fill" style={{ width: `${progress}%` }} />
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => handleDownload("huggingface", m.model_id)}
+                        disabled={isDownloaded || isDownloading}
+                        className="ops-button flex-shrink-0"
+                      >
+                        {isDownloaded ? <CheckCircle className="h-3 w-3" /> : <Download className="h-3 w-3" />}
+                        {isDownloaded ? "Downloaded" : isDownloading ? `${Math.round(progress)}%` : "Download"}
+                      </button>
                     </div>
-                    <button
-                      onClick={() => handleDownload("huggingface", m.model_id)}
-                      disabled={isDownloaded || isDownloading}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary/10 text-primary rounded hover:bg-primary/20 disabled:opacity-40 flex-shrink-0"
-                    >
-                      {isDownloaded ? <CheckCircle className="h-3 w-3" /> : <Download className="h-3 w-3" />}
-                      {isDownloaded ? "Downloaded" : isDownloading ? `${Math.round(progress)}%` : "Download"}
-                    </button>
+                    {downloadErrors[key] && (
+                      <p className="px-3 pb-2 text-[11px] text-destructive">{downloadErrors[key]}</p>
+                    )}
                   </div>
                 );
               })}

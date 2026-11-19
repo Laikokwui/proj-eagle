@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,8 +12,18 @@ from app.core.exceptions import credentials_exception
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
+async def get_token(request: Request) -> str:
+    """Read the access token from the Authorization header or, for clients
+    that cannot set headers (EventSource/WebSocket), the ``token`` query param.
+    """
+    query_token = request.query_params.get("token")
+    if query_token:
+        return query_token
+    return await oauth2_scheme(request)
+
+
 async def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    token: str = Depends(get_token),
     db: AsyncSession = Depends(get_db),
 ) -> User:
     try:
